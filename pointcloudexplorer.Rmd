@@ -1,0 +1,186 @@
+---
+title: "pointcloudexplorer"
+runtime: shiny
+output: html_document
+---
+```{r, echo=FALSE, heigth="100%",warning=FALSE,message=FALSE}
+### HEADING
+### This lines will only be executed once. They load the R-library TDA
+# it will install it if needed.
+if (!require(TDA)) install.packages("TDA", dependencies = TRUE)
+library(TDA)
+library(ggpubr)
+library(geometry)
+require(ggplot2)
+source("TDAsignal.R")
+source("persistentcurvemaker.R")
+source("landscapemaker.R")
+source("simulate_profiles.R")
+source("rankfuncmaker.R")
+
+windowsize=2 # DO NOT CHANGE THIS. We can only visualize 2D data for the moment. 
+# We could visualize 3D generators in the time series (top graph) without much work.
+
+height_graphs=200 #change this to adapt the graph to your window.
+#### END OF HEADING.
+
+##### USER INTERFACE ####
+
+inputPanel(
+  selectInput("lengthofab", label = "Length",
+              choices = c(2, 3, 5, 10, 20, 50, 75), selected =2),
+  
+  selectInput("meanofab", label = "Mean",
+              c(-1, .6, 1), selected = -1),
+  
+  selectInput("stddofab", label = "Standard Deviation",
+              choices = c(.2, .5), selected = .2),
+  selectInput("curvetype", label = "Curve Type", choices = c("Betti", "Lifespan", "Landscape", "RankFunc"), selected="Betti"),
+  selectInput("dimofstudy", label = "Dimension", choices = c(0, 1), selected=0),
+  selectInput("landscapetype", label = "Landscape Num",
+              choices = c(1, 2, 3, 4), selected =2))
+  
+############### END OF USER INTERFACE #############
+renderPlot({
+
+# Save the user's parameter choices
+lengthofab = as.integer(input$lengthofab)
+meanofab = as.numeric(input$meanofab)
+stddofab = as.numeric(input$stddofab)
+curvetype = input$curvetype
+dimofstudy = as.numeric(input$dimofstudy)
+landtype = as.integer(input$landscapetype)
+
+numprobes = 100
+aber_start = 1
+
+# Generate the test and control data
+testprof = generate_test_profile(meanofab, stddofab, numprobes, 1, lengthofab)
+controlprof = generate_control_profile(0, stddofab, numprobes)
+
+numpoints = length(testprof)
+indicesaux=c((1:numpoints),(1:(windowsize-1)))
+
+# CREATE CLOUD
+signalauxtest = c(testprof, testprof[1:(windowsize - 1)])
+signalauxcontrol = c(controlprof, controlprof[1:(windowsize - 1)])
+
+test_cloud = matrix(0, nrow = numpoints, ncol = windowsize)
+control_cloud = matrix(0, nrow = numpoints, ncol = windowsize)
+for (i in 1:numpoints) {
+  test_cloud[i,] = signalauxtest[i:(i + windowsize - 1)]
+  control_cloud[i, ] = signalauxcontrol[i:(i + windowsize - 1)]
+}
+
+# Computes the bounds of the axes for the point clouds
+maxpcx = max(c(test_cloud[, 1], control_cloud[, 1]))
+minpcx = min(c(test_cloud[, 1], control_cloud[, 1]))
+maxpcy = max(c(test_cloud[, 2], control_cloud[, 2]))
+minpcy = min(c(test_cloud[, 2], control_cloud[, 2]))
+
+# Computes the maximum distance between points in the test and control clouds
+# takes the largest of the two divided by 3 for 3 as maximum, after that
+# all simplices are included in the VR complex. 
+testconvexhullpointindices = unique(c(convhulln(test_cloud)))
+testconvexhull = test_cloud[testconvexhullpointindices, ]
+maxtestdist = max(c(as.matrix(dist(testconvexhull,upper = TRUE))))
+
+controlconvexhullpointindices = unique(c(convhulln(control_cloud)))
+controlconvexhull = control_cloud[controlconvexhullpointindices, ]
+maxcontdist = max(c(as.matrix(dist(controlconvexhull, upper=TRUE))))
+
+maxfiltrationvalue = max(c(maxtestdist, maxcontdist))/3
+
+# Construct the betti and lifespan curves
+#maxfiltrationvalue = 2
+par_discretization=seq(from=0,to=maxfiltrationvalue,by=0.01)
+TDAsignaloutputtest <- apply(matrix(testprof), 2, TDAsignal, dimstudy = dimofstudy)
+TDAsignaloutputcontrol <- apply(matrix(controlprof), 2, TDAsignal, dimstudy = dimofstudy)
+
+diag_test = TDAsignaloutputtest[[1]][[3]]
+diag_control = TDAsignaloutputcontrol[[1]][[3]]
+
+rank_func_test = rankfuncmaker(diag_test, dimofstudy, par_discretization)
+rank_func_control = rankfuncmaker(diag_control, dimofstudy, par_discretization)
+#print(dimofstudy)
+landscapes_test = landscape(diag_test, dimension = dimofstudy, KK = landtype, tseq = par_discretization)
+landscapes_control = landscape(diag_control, dimension = dimofstudy, KK = landtype, tseq = par_discretization)
+# print(landscapes_control)
+        
+list_profilestest <-lapply(TDAsignaloutputtest, persistentcurvemaker,
+                              par_discretization=par_discretization, dimstudy = dimofstudy)
+list_profilescontrol <-lapply(TDAsignaloutputcontrol, persistentcurvemaker,
+                              par_discretization=par_discretization, dimstudy = dimofstudy)
+
+        
+# initialize persistence curve matrix
+bettiprofilematrixtest <- matrix(data=0, 
+                              nrow=1,
+                                    ncol=length(par_discretization))
+bettiprofilematrixcontrol <- matrix(data=0, 
+                              nrow=1,
+                                    ncol=length(par_discretization))
+
+lifespanmatrixtest <- bettiprofilematrixtest
+lifespanmatrixcontrol <- bettiprofilematrixcontrol
+bettiprofilematrixtest[1,] = list_profilestest[[1]]$betti1
+bettiprofilematrixcontrol[1,] = list_profilescontrol[[1]]$betti1
+lifespanmatrixtest[1,] = list_profilestest[[1]]$lifespan
+lifespanmatrixcontrol[1,] = list_profilescontrol[[1]]$lifespan
+
+# Plot the signals of the control and test patient data
+signalx = seq(from=1,to=100, by=1)
+signaly1 = controlprof
+signaly2 = testprof
+signaldf = data.frame(signalx, signaly1, signaly2)
+signalplot = ggplot(signaldf, aes(signalx)) + geom_point(aes(y=signaly1), colour="blue") + geom_point(aes(y=signaly2), colour="red") + ggtitle("Signals, Red: Test, Blue: Control") + xlab("Genes") + ylab("Copy Number")
+
+# Plot the control patient's sliding window point cloud
+control_cloud_x = control_cloud[, 1]
+control_cloud_y = control_cloud[, 2]
+control_cloud_df = data.frame(control_cloud_x, control_cloud_y)
+ccplot = ggplot(control_cloud_df, aes(control_cloud_x)) + geom_point(aes(y=control_cloud_y)) + ggtitle("Control Cloud") + xlim(minpcx, maxpcx) + ylim(minpcy, maxpcy) + xlab("Copy Number") + ylab("Copy Number")
+
+# Plot the test patient's sliding window point cloud
+test_cloud_x = test_cloud[, 1]
+test_cloud_y = test_cloud[, 2]
+test_cloud_df = data.frame(test_cloud_x, test_cloud_y)
+tcplot = ggplot(test_cloud_df, aes(test_cloud_x)) + geom_point(aes(y=test_cloud_y)) + ggtitle("Test Cloud") + xlim(minpcx, maxpcx) + ylim(minpcy, maxpcy) + xlab("Copy Number") + ylab("Copy Number")
+
+# Determines whether to plot the betti or lifespan curve based on user's choice
+if (curvetype == "Betti") {
+  y1 = bettiprofilematrixcontrol[1, ]
+  y2 = bettiprofilematrixtest[1, ]
+  df = data.frame(par_discretization, y1, y2)
+  curveplot = ggplot(df, aes(par_discretization)) + geom_line(aes(y=y1), colour="blue") + geom_line(aes(y=y2), colour="red") + ggtitle("Betti Curves, Red: Test, Blue: Control") + xlab("Radius") + ylab("Connected Comps")
+}
+if (curvetype == "RankFunc") {
+  #print(landscapes_control)
+  y1 = rank_func_control
+  y2 = rank_func_test
+  df = data.frame(par_discretization, y1, y2)
+  curveplot = ggplot(df, aes(par_discretization)) + geom_line(aes(y=y1), colour="blue") + geom_line(aes(y=y2), colour="red") + ggtitle("Rank Funcs, Red: Test, Blue: Control")
+}
+if (curvetype == "Landscape") {
+  #print(landscapes_control)
+  y1 = landscapes_control
+  y2 = landscapes_test
+  df = data.frame(par_discretization, y1, y2)
+  curveplot = ggplot(df, aes(par_discretization)) + geom_line(aes(y=y1), colour="blue") + geom_line(aes(y=y2), colour="red") + ggtitle("Landscapes, Red: Test, Blue: Control")
+}
+if (curvetype == "Lifespan") {
+  y1 = lifespanmatrixcontrol[1, ]
+  y2 = lifespanmatrixtest[1, ]
+  df = data.frame(par_discretization, y1, y2)
+  curveplot = ggplot(df, aes(par_discretization)) + geom_line(aes(y=y1), colour="blue") + geom_line(aes(y=y2), colour="red") + ggtitle("Lifespan Curves, Red: Test, Blue: Control")
+}
+
+# Specify the layout of the plots
+ggarrange(signalplot, ggarrange(ccplot, tcplot,
+          ncol = 2),
+          curveplot, nrow = 3)
+
+
+},  height = height_graphs+300)
+```
+
