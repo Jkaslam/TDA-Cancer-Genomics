@@ -10,6 +10,8 @@ source("persistentcurvemaker.R")
 source("generator_list_maker.R")
 source("statisticsofcurves.R")
 
+# Computes the persistence of the Horlings dataset for each patient. This data
+# is saved in CSV files labeled by chromosome arms. 
 dimofstudy = 0
 
 ### READING THE DATA
@@ -40,24 +42,20 @@ nopchromosomoes <- c(13, 14, 15, 18, 20, 21, 22)
       
       # Loops through the segments in the current chromosome arm
       for (segmentofstudy in 1:segmentlengths[segmentindex]) {
-        # print(segmentlengths[segmentindex])
         conditionChromosome <- horlings_dict$Chrom==chromosomeofstudy & horlings_dict$Arm==armofstudy
         conditionSegment <- horlings_dict$Segment %in% segmentofstudy
         
         horlings_dictbis <- horlings_dict[conditionChromosome & conditionSegment,]
-        #print(horlings_dictbis)
         
         seqstart <- min(horlings_dictbis$Beg)+1 #positions are 0-based and R vectors are 1-based.
         seqend <- max(horlings_dictbis$End)+1
         
         #EXTRACT RELEVANT DATA. PATIENTS START AT COLUMN 6.
         patients_data <- horlingsdata[seqstart:seqend,6:ncol(horlingsdata)]
-        
         colnames(patients_data) <- paste0("patient_",1:numpatients)
         
         
         TDAsignaloutput <- apply(patients_data, 2, TDAsignal)
-        
         diagrams = vector(mode = "list", 2 * length(TDAsignaloutput))
         
         for (i in 1:(length(diagrams)/2)) {
@@ -68,7 +66,11 @@ nopchromosomoes <- c(13, 14, 15, 18, 20, 21, 22)
         }
         
         all_diags = do.call(rbind, diagrams)
-        persistence_path = paste("/Users/jkaslam/Desktop/Horlings_Persistence/Dim0/", chromosomeofstudy, armofstudy, segmentofstudy,".csv", sep="")
+        
+        # Set this string to be equal to the path where you want the persistence
+        # CSV files. 
+        output_path = ""
+        persistence_path = paste(output_path, chromosomeofstudy, armofstudy, segmentofstudy,".csv", sep="")
         write.csv(all_diags, persistence_path)
       }
       
