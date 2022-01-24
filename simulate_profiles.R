@@ -1,3 +1,8 @@
+# Has functions to generate a simulated data set. Test patients either have
+# aberrations or don't based on the mix parameter. The ones that have aberrations
+# have single, contiguous, aberrations with given length and values from
+# a normal distribution with given mean and standard deviation. 
+
 # Generates a profile with an aberration with given mean and standard deviation. 
 # Aberration starts at aber_start and is as long as aber_length. 
 generate_test_profile <- function(mean, standard_deviation, num_probes, aber_start, aber_length) {

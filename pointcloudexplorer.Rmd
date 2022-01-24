@@ -4,6 +4,9 @@ runtime: shiny
 output: html_document
 ---
 ```{r, echo=FALSE, heigth="100%",warning=FALSE,message=FALSE}
+# Generates simulated patient data and lets user choose the type of persistence
+# curve to plot. The app then displays the initial data, the sliding window
+# point cloud associated to that data and the chosen persistence curve. 
 ### HEADING
 ### This lines will only be executed once. They load the R-library TDA
 # it will install it if needed.
@@ -18,8 +21,7 @@ source("landscapemaker.R")
 source("simulate_profiles.R")
 source("rankfuncmaker.R")
 
-windowsize=2 # DO NOT CHANGE THIS. We can only visualize 2D data for the moment. 
-# We could visualize 3D generators in the time series (top graph) without much work.
+windowsize=2
 
 height_graphs=200 #change this to adapt the graph to your window.
 #### END OF HEADING.
@@ -35,7 +37,7 @@ inputPanel(
   
   selectInput("stddofab", label = "Standard Deviation",
               choices = c(.2, .5), selected = .2),
-  selectInput("curvetype", label = "Curve Type", choices = c("Betti", "Lifespan", "Landscape", "RankFunc"), selected="Betti"),
+  selectInput("curvetype", label = "Curve Type", choices = c("Betti", "Lifespan", "Landscape"), selected="Betti"),
   selectInput("dimofstudy", label = "Dimension", choices = c(0, 1), selected=0),
   selectInput("landscapetype", label = "Landscape Num",
               choices = c(1, 2, 3, 4), selected =2))
@@ -51,6 +53,7 @@ curvetype = input$curvetype
 dimofstudy = as.numeric(input$dimofstudy)
 landtype = as.integer(input$landscapetype)
 
+# Number of data points
 numprobes = 100
 aber_start = 1
 
@@ -61,7 +64,7 @@ controlprof = generate_control_profile(0, stddofab, numprobes)
 numpoints = length(testprof)
 indicesaux=c((1:numpoints),(1:(windowsize-1)))
 
-# CREATE CLOUD
+# Create sliding window point clouds
 signalauxtest = c(testprof, testprof[1:(windowsize - 1)])
 signalauxcontrol = c(controlprof, controlprof[1:(windowsize - 1)])
 
@@ -91,8 +94,7 @@ maxcontdist = max(c(as.matrix(dist(controlconvexhull, upper=TRUE))))
 
 maxfiltrationvalue = max(c(maxtestdist, maxcontdist))/3
 
-# Construct the betti and lifespan curves
-#maxfiltrationvalue = 2
+# Construct the Betti, lifespan and landscape curves
 par_discretization=seq(from=0,to=maxfiltrationvalue,by=0.01)
 TDAsignaloutputtest <- apply(matrix(testprof), 2, TDAsignal, dimstudy = dimofstudy)
 TDAsignaloutputcontrol <- apply(matrix(controlprof), 2, TDAsignal, dimstudy = dimofstudy)
@@ -100,12 +102,8 @@ TDAsignaloutputcontrol <- apply(matrix(controlprof), 2, TDAsignal, dimstudy = di
 diag_test = TDAsignaloutputtest[[1]][[3]]
 diag_control = TDAsignaloutputcontrol[[1]][[3]]
 
-rank_func_test = rankfuncmaker(diag_test, dimofstudy, par_discretization)
-rank_func_control = rankfuncmaker(diag_control, dimofstudy, par_discretization)
-#print(dimofstudy)
 landscapes_test = landscape(diag_test, dimension = dimofstudy, KK = landtype, tseq = par_discretization)
 landscapes_control = landscape(diag_control, dimension = dimofstudy, KK = landtype, tseq = par_discretization)
-# print(landscapes_control)
         
 list_profilestest <-lapply(TDAsignaloutputtest, persistentcurvemaker,
                               par_discretization=par_discretization, dimstudy = dimofstudy)
@@ -113,7 +111,7 @@ list_profilescontrol <-lapply(TDAsignaloutputcontrol, persistentcurvemaker,
                               par_discretization=par_discretization, dimstudy = dimofstudy)
 
         
-# initialize persistence curve matrix
+# Initialize persistence curve matrices
 bettiprofilematrixtest <- matrix(data=0, 
                               nrow=1,
                                     ncol=length(par_discretization))
@@ -153,13 +151,6 @@ if (curvetype == "Betti") {
   y2 = bettiprofilematrixtest[1, ]
   df = data.frame(par_discretization, y1, y2)
   curveplot = ggplot(df, aes(par_discretization)) + geom_line(aes(y=y1), colour="blue") + geom_line(aes(y=y2), colour="red") + ggtitle("Betti Curves, Red: Test, Blue: Control") + xlab("Radius") + ylab("Connected Comps")
-}
-if (curvetype == "RankFunc") {
-  #print(landscapes_control)
-  y1 = rank_func_control
-  y2 = rank_func_test
-  df = data.frame(par_discretization, y1, y2)
-  curveplot = ggplot(df, aes(par_discretization)) + geom_line(aes(y=y1), colour="blue") + geom_line(aes(y=y2), colour="red") + ggtitle("Rank Funcs, Red: Test, Blue: Control")
 }
 if (curvetype == "Landscape") {
   #print(landscapes_control)
