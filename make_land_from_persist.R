@@ -1,3 +1,8 @@
+# Computes the p-values for each breast cancer subtype and each segment of
+# the chromosome using landscape curves. The output is saved in a CSV file. 
+# The plots of the average landscape curves for the test and control of each 
+# segment are plotted as well. These plots are saved in JPEG files.
+
 ### HEADING
 ### This lines will only be executed once. They load the R-library TDA
 # it will install it if needed.
@@ -9,9 +14,13 @@ source("curves_from_persist.R")
 source("statisticsofcurves.R")
 
 maxfiltrationvalue=.5
-filtrationvector = seq(from=0.01,to=maxfiltrationvalue,by=0.01)
 dimofstudy = 0
+# Maximum number of persistence landscapes to compute
 max_k = 4
+# The path where the user wants p-value CSV files to go.
+pval_path = ""
+# The path where the user wishes landscape plots to go.
+landscape_plot_path = ""
 
 ### READING THE DATA
 horlingsdata <- read.delim("./DATA/horlings_update_data_full.txt")
@@ -51,17 +60,16 @@ for (ind in 5) {
       
       # Loops through the segments in the current chromosome arm
       for (segmentofstudy in 1:segmentlengths[segmentindex]) {
-        # print(segmentlengths[segmentindex])
         conditionChromosome <- horlings_dict$Chrom==chromosomeofstudy & horlings_dict$Arm==armofstudy
         conditionSegment <- horlings_dict$Segment %in% segmentofstudy
         
         horlings_dictbis <- horlings_dict[conditionChromosome & conditionSegment,]
-        #print(horlings_dictbis)
         
-        seqstart <- min(horlings_dictbis$Beg)+1 #positions are 0-based and R vectors are 1-based.
+        # Positions are 0-based and R vectors are 1-based.
+        seqstart <- min(horlings_dictbis$Beg)+1 
         seqend <- max(horlings_dictbis$End)+1
         
-        #EXTRACT RELEVANT DATA. PATIENTS START AT COLUMN 6.
+        # EXTRACT RELEVANT DATA. PATIENTS START AT COLUMN 6.
         patients_data <- horlingsdata[seqstart:seqend,6:ncol(horlingsdata)]
         
         probes_data <- horlingsdata[seqstart:seqend,1:4] #all the chromosome info for this segment.
@@ -90,11 +98,13 @@ for (ind in 5) {
         }
         #################################
         
-        persistence_path = "/Users/jkaslam/Desktop/Horlings_Persistence/Dim0/"
+        # The path where precomputed Horlings persistence is located
+        persistence_path = ""
         persistence = read.csv(paste(persistence_path, chromosomeofstudy, armofstudy, segmentofstudy,".csv",sep=""))
         persistence = persistence[,2:4]
         delimiting_row_indices = which(rowSums(persistence) == 0.0)
         
+        # Compute the list of interval matrices from the Horlings persistence
         intervals = vector(mode = "list", nrow(persistence))
         int_row_to_fill = 1
         for (i in 1:(length(delimiting_row_indices) - 1)) {
@@ -137,12 +147,12 @@ for (ind in 5) {
           for (k in 1:length(landscape_profiles)) {
             landscapes[k, ] = landscape_profiles[[k]][i,]
           }
-          #print(landscapes)
+          
           statofcurvesoutput = statisticsofcurves(landscapes, "land", cases, controls)
           l1andl2pvals = c(statofcurvesoutput[[1]], statofcurvesoutput[[2]])
           
           par(cex.lab=1.5, cex.axis=1.5, cex.main=1.5, cex.sub=1.5, mar = c(5.1, 4.4, 4.1, 2.1))
-          plotpath = paste("/Users/jkaslam/Desktop/P-Vals-L2/landscape-pl/", typeName, chromosomeofstudy, armofstudy, segmentofstudy, "k", i, ".jpeg", sep="")
+          plotpath = paste(landscape_plot_path, typeName, chromosomeofstudy, armofstudy, segmentofstudy, "k", i, ".jpeg", sep="")
           jpeg(file = plotpath)
           #Test in red
           plot(par_discretization, statofcurvesoutput[[3]], type="l", col="red", lwd = 3, xlab = "Filtration Parameter", ylab = "", ylim = c(0, .05))
@@ -172,6 +182,6 @@ for (curr_landscape in 1:max_k)
   pvaluetables[[curr_landscape]][, 10] = p.adjust(pvaluetables[[curr_landscape]][, 6], method="fdr")
   pvaluetables[[curr_landscape]][, 11] = p.adjust(pvaluetables[[curr_landscape]][, 7], method="fdr")
   
-  path = paste("/Users/jkaslam/Desktop/P-Vals-L2/landscape-pvals2/", typeName, "landscapek", curr_landscape, "dim0.csv", sep="")
+  path = paste(pval_path, typeName, "landscapek", curr_landscape, "dim0.csv", sep="")
   write.csv(pvaluetables[[curr_landscape]], path)
 }

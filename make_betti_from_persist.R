@@ -1,3 +1,8 @@
+# Computes the p-values for each breast cancer subtype and each segment of
+# the chromosome using Betti curves. The output is saved in a CSV file. 
+# The plots of the average Betti curves for the test and control of each 
+# segment are plotted as well. These plots are saved in JPEG files.
+
 ### HEADING
 ### This lines will only be executed once. They load the R-library TDA
 # it will install it if needed.
@@ -9,8 +14,12 @@ source("curves_from_persist.R")
 source("statisticsofcurves.R")
 
 maxfiltrationvalue=.8
-filtrationvector = seq(from=0.01,to=maxfiltrationvalue,by=0.01)
 dimofstudy = 0
+# The path where you want average betti curve plots to appear. 
+betti_path = ""
+#Change the path based on where you want the p-value CSV file to end up
+pval_path = ""
+
 
 ### READING THE DATA
 horlingsdata <- read.delim("./DATA/horlings_update_data_full.txt")
@@ -66,7 +75,6 @@ for (ind in 5) {
         
         ####################################
         ## SELECT CASES AND CONTROLS
-        
         typeName= typeNames[ind]
         if (typeName == "HER2+") {
           cases=which(horlings_phen$HER2==1)
@@ -75,23 +83,17 @@ for (ind in 5) {
           cases = which(horlings_phen$Molecular_Subtypes == typeName)
         }
         
-        
         patientlist = 1:numpatients
         cases = which(horlings_phen$ER == 1)
         controls=patientlist[!(patientlist%in%cases)]
-        #controls = which(horlings_phen$HER2 == 1)
-        # if (typeName == "Luminal B") {
-        #   basal = which(horlings_phen$Molecular_Subtypes == "Basal")
-        #   both = c(cases, basal)
-        #   controls=patientlist[!(patientlist%in%both)]
-        # }
-        #################################
         
-        persistence_path = "/Users/jkaslam/Desktop/Horlings_Persistence/Dim0/"
+        # Path where the Horlings persistence is located
+        persistence_path = ""
         persistence = read.csv(paste(persistence_path, chromosomeofstudy, armofstudy, segmentofstudy,".csv",sep=""))
         persistence = persistence[,2:4]
         delimiting_row_indices = which(rowSums(persistence) == 0.0)
         
+        # Calculate the interval matrices from the persistence data
         intervals = vector(mode = "list", nrow(persistence))
         int_row_to_fill = 1
         for (i in 1:(length(delimiting_row_indices) - 1)) {
@@ -116,7 +118,8 @@ for (ind in 5) {
         
         intervals = intervals[!sapply(intervals, is.null)]
         par_discretization=seq(from=0, to=maxfiltrationvalue, by=0.01)
-
+        
+        # Compute betti curves from the interval matrices
         betti_profiles <-lapply(intervals, betti_from_persist,
                               par_discretization=par_discretization, dimstudy = dimofstudy)
         
@@ -128,7 +131,7 @@ for (ind in 5) {
           bettiprofilematrix[i,] = betti_profiles[[i]]
         }
         
-        curvetype <- "betti1"
+        curvetype <- "betti"
         curvematrix<-bettiprofilematrix
         statofcurvesoutput = statisticsofcurves(curvematrix, curvetype, cases, controls)
         l1andl2pvals = c(statofcurvesoutput[[1]], statofcurvesoutput[[2]])
@@ -137,9 +140,7 @@ for (ind in 5) {
         # Plot the average test and control curves to determine whether the test curve is on top or not
         # allowing us to eliminate regions detected as significant where the control set caused the
         # detection of significance.
-        #HpcStor/home/jkaslam
-        plotpath = paste("/Users/jkaslam/Desktop/P-Vals-L2/betti0-plots/", typeName, chromosomeofstudy, armofstudy, segmentofstudy, ".jpeg", sep="")
-        #plotpath = paste("/HpcStor/home/jkaslam/TDA/betti0-plots/", typeName, chromosomeofstudy, armofstudy, segmentofstudy, ".jpeg", sep="")
+        plotpath = paste(betti_path, typeName, chromosomeofstudy, armofstudy, segmentofstudy, ".jpeg", sep="")
         jpeg(file = plotpath)
         #
         par(cex.lab=1.5, cex.axis=1.5, cex.main=1.5, cex.sub=1.5, mar = c(5.8, 4.4, 4.1, 2.1))
@@ -175,7 +176,6 @@ for (ind in 5) {
   pvaluetable[, 10] = p.adjust(pvaluetable[, 6], method="fdr")
   pvaluetable[, 11] = p.adjust(pvaluetable[, 7], method="fdr")
   
-  # Change the path based on where you want the file to end up
-  path = paste("/Users/jkaslam/Desktop/P-Vals-L2/betti0-pvals/", typeName, ".csv", sep="")
+  path = paste(pval_path, typeName, ".csv", sep="")
   write.csv(pvaluetable, path)
 }

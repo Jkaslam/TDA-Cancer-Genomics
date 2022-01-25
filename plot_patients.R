@@ -1,3 +1,6 @@
+# Plots the persistence curves (Betti, lifespan, landscape) of all patients
+# from the Horlings dataset to specified directories.
+
 ### HEADING
 ### This lines will only be executed once. They load the R-library TDA
 # it will install it if needed.
@@ -10,20 +13,26 @@ source("TDAsignal.R")
 source("curves_from_persist.R")
 source("statisticsofcurves.R")
 
-maxfiltrationvalue=2
-filtrationvector = seq(from=0.01,to=maxfiltrationvalue,by=0.01)
-dimofstudy = 0
-
 ### READING THE DATA
+maxfiltrationvalue=2
 horlingsdata <- read.delim("./DATA/horlings_update_data_full.txt")
 horlings_dict <- read.delim("./DATA/horlings_sect_dict_cyto.txt")
 
+# Paths of where to put plots (user changes)
+life_path = ""
+betti_path = ""
+landscape_path = ""
+
 numpatients = ncol(horlingsdata) - 5
 
+# Choose chromosome of study including arm and segment
 chromosomeofstudy = 11
 armofstudy = "q"
 segmentofstudy = 6
+
+# The dimension of homology to consider
 dimofstudy = 0
+# The number of persistence landscapes to use
 maxk = 4
 
 conditionChromosome <- horlings_dict$Chrom==chromosomeofstudy & horlings_dict$Arm==armofstudy
@@ -31,24 +40,28 @@ conditionSegment <- horlings_dict$Segment %in% segmentofstudy
 
 horlings_dictbis <- horlings_dict[conditionChromosome & conditionSegment,]
 
-seqstart <- min(horlings_dictbis$Beg)+1 #positions are 0-based and R vectors are 1-based.
+# Positions are 0-based and R vectors are 1-based.
+seqstart <- min(horlings_dictbis$Beg)+1 
 seqend <- max(horlings_dictbis$End)+1
 
 #EXTRACT RELEVANT DATA. PATIENTS START AT COLUMN 6.
 patients_data <- horlingsdata[seqstart:seqend,6:ncol(horlingsdata)]
 
-probes_data <- horlingsdata[seqstart:seqend,1:4] #all the chromosome info for this segment.
+# All the chromosome info for this segment.
+probes_data <- horlingsdata[seqstart:seqend,1:4] 
 numpatients <- ncol(patients_data)
 numprobes <- nrow(patients_data)
 colnames(patients_data) <- paste0("patient_",1:numpatients)
 
 cases= 1:numpatients
 
-persistence_path = "/Users/jkaslam/Desktop/Horlings_Persistence/Dim0/"
+# Path of the precomputed persistence for the dataset. 
+persistence_path = ""
 persistence = read.csv(paste(persistence_path, chromosomeofstudy, armofstudy, segmentofstudy,".csv",sep=""))
 persistence = persistence[,2:4]
 delimiting_row_indices = which(rowSums(persistence) == 0.0)
 
+# Turn the persistence information into a list of birth-death intervals
 intervals = vector(mode = "list", nrow(persistence))
 int_row_to_fill = 1
 for (i in 1:(length(delimiting_row_indices) - 1)) {
@@ -75,14 +88,12 @@ par_discretization=seq(from=0, to=maxfiltrationvalue, by=0.01)
 
 TDAsignaloutput <- apply(patients_data, 2, TDAsignal, maxfiltrationvalue = maxfiltrationvalue, dimstudy = dimofstudy)     
 
+# Compute Betti, lifespan and persistence landscape curves from intervals
 betti_profiles<-lapply(intervals, betti_from_persist,
                        par_discretization=par_discretization, dimstudy = dimofstudy)
 lifespan_profiles <-lapply(intervals, lifespan_from_persist,
                            par_discretization=par_discretization, dimstudy = dimofstudy)
 landscape_profiles <- lapply(intervals, landscape_from_persist, par_discretization = par_discretization, dimstudy = dimofstudy, Kmax = maxk)
-
-rank_func_profile = rank_from_persist(intervals[[patient]], par_discretization = par_discretization, dimstudy = dimofstudy)
-
 
 
 bettiprofilematrix <- matrix(data=0, 
@@ -97,6 +108,7 @@ for (i in 1:numpatients){
   lifespanprofilematrix[i,] =lifespan_profiles[[i]]
 }
 
+# Plots all persistence curves and saves them to give directories
 par(cex.lab=1.5, cex.axis=1.5, cex.main=1.5, cex.sub=1.5, mar = c(5.1, 4.4, 4.1, 2.1))
 for (patient in cases) {
   curr_patient = colnames(horlingsdata)[patient+5]
@@ -106,7 +118,7 @@ for (patient in cases) {
       landscapes[k, ] = landscape_profiles[[k]][i,]
     }
     
-    plotpath = paste("/Users/jkaslam/Desktop/P-Vals-L2/11q6Plots/", "Landscape", i, "Patient", curr_patient, chromosomeofstudy, armofstudy, segmentofstudy, ".jpeg", sep="")
+    plotpath = paste(landscape_path, "Landscape", i, "Patient", curr_patient, chromosomeofstudy, armofstudy, segmentofstudy, ".jpeg", sep="")
     jpeg(file = plotpath)
     plot(par_discretization, landscapes[patient, ], type="l", col="red", lwd = 3, xlab = "Filtration Parameter", ylab = "Landscape")
     
@@ -115,28 +127,24 @@ for (patient in cases) {
   }
   
   if (dimofstudy == 0) {
-    plotpath = paste("/Users/jkaslam/Desktop/P-Vals-L2/11q6Plots/", "Betti Patient", curr_patient, chromosomeofstudy, armofstudy, segmentofstudy, ".jpeg", sep="")
+    plotpath = paste(betti_path, "Betti Patient", curr_patient, chromosomeofstudy, armofstudy, segmentofstudy, ".jpeg", sep="")
     jpeg(file = plotpath)
     plot(par_discretization, bettiprofilematrix[patient, ], type="l", col="red", lwd = 3, xlab = "Filtration Parameter", ylab = "Connected Components")
     title(paste("Patient", curr_patient, paste(chromosomeofstudy, armofstudy, "s", segmentofstudy, sep=""), "Betti-0 Curve", sep=" "))
     dev.off()
   }
   else {
-    plotpath = paste("/Users/jkaslam/Desktop/P-Vals-L2/11q6Plots/", "Betti Patient", curr_patient, chromosomeofstudy, armofstudy, segmentofstudy, ".jpeg", sep="")
+    plotpath = paste(betti_path, "Betti Patient", curr_patient, chromosomeofstudy, armofstudy, segmentofstudy, ".jpeg", sep="")
     jpeg(file = plotpath)
     plot(par_discretization, bettiprofilematrix[patient, ], type="l", col="red", lwd = 3, xlab = "Filtration Parameter")
     title(paste("Patient", curr_patient, paste(chromosomeofstudy, armofstudy, "s", segmentofstudy, sep=""), "Betti-1 Curve",  sep=" "))
     dev.off()
   }
-  plotpath = paste("/Users/jkaslam/Desktop/P-Vals-L2/11q6Plots/", "Life Patient", curr_patient, chromosomeofstudy, armofstudy, segmentofstudy, ".jpeg", sep="")
+  plotpath = paste(life_path, "Life Patient", curr_patient, chromosomeofstudy, armofstudy, segmentofstudy, ".jpeg", sep="")
   jpeg(file = plotpath)
   plot(par_discretization, lifespanprofilematrix[patient, ], type="l", col="red", lwd = 3, xlab = "Filtration Parameter", ylab = "Lifespan")
   title(paste("Patient", curr_patient, paste(chromosomeofstudy, armofstudy, "s", segmentofstudy, sep=""), paste("Lifespan-", dimofstudy, sep=""), "Curve", sep=" "))
   dev.off()
   
-  # par(cex.lab=1, cex.axis=1, cex.main=1, cex.sub=1, mar = c(5.1, 4.4, 4.1, 2.1))
-  # heatmap(rank_func_profile,Rowv = NA, Colv = NA, main = paste("Patient", patient, paste(chromosomeofstudy, armofstudy, "s", segmentofstudy, sep=""), "Rank Function", dimofstudy, sep=" ")
-  # )
-  #column_title = paste("Patient", patient, paste(chromosomeofstudy, armofstudy, "s", segmentofstudy, sep=""), "Rank Homology", dimofstudy, sep=" ")
 }
 
